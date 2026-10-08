@@ -5,8 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastmcp import FastMCP
-from fastmcp.server.auth import AuthProvider
-from fastmcp.server.auth.providers.debug import DebugTokenVerifier
+from fastmcp.server.auth import AccessToken, AuthProvider, TokenVerifier
 from pydantic import BaseModel, Field
 
 from scholia_mcp.config import Settings
@@ -25,15 +24,24 @@ class SearchResults(BaseModel):
     results: list[SearchHit]
 
 
+class StaticBearerVerifier(TokenVerifier):
+    """Accepts exactly one shared token, compared in constant time."""
+
+    def __init__(self, token: str):
+        super().__init__()
+        self._token = token.encode()
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not hmac.compare_digest(token.encode(), self._token):
+            return None
+        return AccessToken(token=token, client_id="bearer", scopes=[])
+
+
 def build_auth(settings: Settings) -> AuthProvider:
     match settings.auth_mode:
         case "bearer":
-            expected = settings.bearer_token
-            assert expected  # guaranteed by Settings
-            return DebugTokenVerifier(
-                validate=lambda token: hmac.compare_digest(token.encode(), expected.encode()),
-                client_id="bearer",
-            )
+            assert settings.bearer_token  # guaranteed by Settings
+            return StaticBearerVerifier(settings.bearer_token)
 
 
 def create_server(store: NoteStore, auth: AuthProvider | None = None) -> FastMCP:

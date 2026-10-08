@@ -123,7 +123,8 @@ def _check_or_init_meta(conn: psycopg.Connection[DictRow], expected: dict[str, A
         raise SchemaMismatch(
             "Database was indexed with different settings ("
             + "; ".join(diffs)
-            + "). Run `scholia-mcp reindex` to rebuild it with the configured ones."
+            + "). Restore the previous settings, or rebuild the index with"
+            " `scholia-mcp reindex` (not available yet in this version)."
         )
 
 
@@ -206,7 +207,16 @@ class NoteStore:
         """
         statuses = ["active", "superseded"] if include_superseded else ["active"]
         [embedding] = self._embedder.embed([query], "query")
-        with self._pool.connection() as conn:
+        candidates = max(limit * 5, 40)
+        with self._pool.connection() as conn, conn.transaction():
+            # The HNSW index otherwise stops after ef_search (default 40) rows,
+            # *then* applies the status/tag filters, silently dropping matches.
+            # Iterative scans keep walking the graph until enough rows pass.
+            conn.execute(
+                "SELECT set_config('hnsw.iterative_scan', 'strict_order', true),"
+                " set_config('hnsw.ef_search', %s, true)",
+                (str(candidates),),
+            )
             rows = conn.execute(
                 _SEARCH_SQL,
                 {
@@ -215,7 +225,7 @@ class NoteStore:
                     "tags": normalize_tags(tags or []),
                     "embedding": _vector_literal(embedding),
                     "lang": self._fts_language,
-                    "candidates": max(limit * 5, 40),
+                    "candidates": candidates,
                     "rrf_k": _RRF_K,
                     "limit": limit,
                     "excerpt": _EXCERPT_CHARS,

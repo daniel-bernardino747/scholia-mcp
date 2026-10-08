@@ -21,7 +21,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql://scholia:scholia@db:5432/scholia
     ports:

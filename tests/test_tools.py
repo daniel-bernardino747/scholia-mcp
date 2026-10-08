@@ -118,3 +118,16 @@ async def test_search_returns_at_most_limit_results(client):
         await save(client, title=f"Espresso {n}", body="Espresso.")
 
     assert len(await search(client, "espresso", limit=2)) == 2
+
+
+async def test_tag_filter_finds_matches_beyond_the_nearest_neighbours(client):
+    # A tag on half the notes looks unselective, so the planner walks the HNSW
+    # index, whose default search stops after ~40 candidates: here all of them
+    # closer to the query than any tagged note, and none carrying the tag.
+    for n in range(300):
+        await save(client, title=f"Car {n}", body="Cars and automobiles.", tags=["gear"])
+        await save(client, title=f"Night {n}", body="Insomnia and sleep.", tags=["health"])
+
+    results = await search(client, "car", tags=["health"], limit=5)
+
+    assert [r["title"].split()[0] for r in results] == ["Night"] * 5
