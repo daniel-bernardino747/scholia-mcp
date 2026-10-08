@@ -1,0 +1,31 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: scholia
+      POSTGRES_PASSWORD: scholia
+      POSTGRES_DB: scholia
+    ports:
+      - "54330:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scholia"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://scholia:scholia@db:5432/scholia
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
