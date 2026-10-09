@@ -5,9 +5,10 @@ import sys
 
 from pydantic import ValidationError
 
+from scholia_mcp.auth import build_auth
 from scholia_mcp.config import Settings
 from scholia_mcp.embeddings import build_embedder
-from scholia_mcp.server import build_auth, create_server
+from scholia_mcp.server import create_server
 from scholia_mcp.store import SchemaMismatch, open_store
 
 

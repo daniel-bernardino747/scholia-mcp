@@ -16,6 +16,9 @@ def make(monkeypatch, **env):
         "EMBEDDING_PROVIDER",
         "VOYAGE_API_KEY",
         "ALLOWED_GITHUB_USERS",
+        "GITHUB_CLIENT_ID",
+        "GITHUB_CLIENT_SECRET",
+        "BASE_URL",
         "FTS_LANGUAGE",
     ):
         monkeypatch.delenv(key, raising=False)
@@ -50,3 +53,33 @@ def test_unsupported_auth_mode_refuses_to_load(monkeypatch):
 def test_unknown_embedding_provider_refuses_to_load(monkeypatch):
     with pytest.raises(ValidationError, match="embedding_provider"):
         make(monkeypatch, BEARER_TOKEN="s3cret", EMBEDDING_PROVIDER="magic")
+
+
+GITHUB = {
+    "AUTH_MODE": "github",
+    "ALLOWED_GITHUB_USERS": "Octocat, hubot",
+    "GITHUB_CLIENT_ID": "Ov23li-id",
+    "GITHUB_CLIENT_SECRET": "secret",
+    "BASE_URL": "https://scholia.example.com",
+}
+
+
+def test_github_mode_loads_and_parses_the_allowlist(monkeypatch):
+    settings = make(monkeypatch, **GITHUB)
+
+    assert settings.auth_mode == "github"
+    assert settings.github_allowlist == {"octocat", "hubot"}
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["ALLOWED_GITHUB_USERS", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "BASE_URL"],
+)
+def test_github_mode_without_a_required_setting_refuses_to_load(monkeypatch, missing):
+    with pytest.raises(ValidationError, match=missing):
+        make(monkeypatch, **{**GITHUB, missing: ""})
+
+
+def test_github_mode_with_an_allowlist_of_only_separators_refuses_to_load(monkeypatch):
+    with pytest.raises(ValidationError, match="ALLOWED_GITHUB_USERS"):
+        make(monkeypatch, **{**GITHUB, "ALLOWED_GITHUB_USERS": " , ,"})
