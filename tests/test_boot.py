@@ -39,3 +39,8 @@ def test_reboot_with_different_language_refuses_and_points_to_reindex(database_u
 def test_boot_with_unknown_fts_language_refuses(database_url, embedder):
     with pytest.raises(Exception, match="klingon"):
         open_store(database_url, embedder, "klingon")
+
+
+def test_boot_with_more_dimensions_than_the_hnsw_index_supports_refuses(database_url):
+    with pytest.raises(ValueError, match="2000"):
+        open_store(database_url, FakeEmbedder(dim=2001), "english")

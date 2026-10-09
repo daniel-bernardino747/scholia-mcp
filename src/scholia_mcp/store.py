@@ -17,6 +17,8 @@ from scholia_mcp.embeddings import Embedder
 
 # Arbitrary key for pg_advisory_lock, so concurrent boots migrate one at a time.
 _MIGRATION_LOCK = 0x5C401A
+# pgvector's HNSW index rejects `vector` columns with more dimensions.
+_HNSW_MAX_DIM = 2000
 
 
 Status = Literal["active", "superseded", "archived"]
@@ -59,6 +61,7 @@ def open_store(
     On an empty database the configured embedder and FTS language are recorded
     in `meta`. On later boots they must match, or SchemaMismatch is raised.
     """
+    _check_dimension(embedder)
     expected = _index_settings(embedder, fts_language)
     with psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn:
         conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK,))
@@ -78,6 +81,7 @@ def reindex(database_url: str, embedder: Embedder, fts_language: str, batch_size
     with the server stopped, since a running server still embeds with the old
     settings. Returns the number of notes reindexed.
     """
+    _check_dimension(embedder)
     expected = _index_settings(embedder, fts_language)
     with psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn:
         conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK,))
@@ -117,6 +121,14 @@ def reindex(database_url: str, embedder: Embedder, fts_language: str, batch_size
         finally:
             conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK,))
     return len(notes)
+
+
+def _check_dimension(embedder: Embedder) -> None:
+    if embedder.dim > _HNSW_MAX_DIM:
+        raise ValueError(
+            f"{embedder.provider}/{embedder.model} produces {embedder.dim}-dim vectors;"
+            f" pgvector's HNSW index supports at most {_HNSW_MAX_DIM}."
+        )
 
 
 def _embedding_text(title: str, body: str) -> str:
@@ -212,6 +224,7 @@ class NoteStore:
     ):
         self._embedder = embedder
         self._fts_language = fts_language
+        self._index_settings = _index_settings(embedder, fts_language)
         # Notes less similar than this to the query only appear on a term match.
         self._min_similarity = min_similarity
         self._pool = ConnectionPool(
@@ -226,6 +239,22 @@ class NoteStore:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+    def _ensure_current(self, conn: psycopg.Connection[Any]) -> None:
+        """Refuse to work on an index rebuilt (by reindex) since this store opened.
+
+        FOR SHARE makes a concurrent reindex wait for this transaction, so a
+        note can't slip in with the old embedder after the check.
+        """
+        current = conn.execute(
+            "SELECT embedding_provider, embedding_model, embedding_dim, fts_language"
+            " FROM meta FOR SHARE"
+        ).fetchone()
+        if current != self._index_settings:
+            raise SchemaMismatch(
+                "The database was reindexed with different settings since this server"
+                " started. Restart it with the settings it was reindexed with."
+            )
 
     def meta(self) -> dict[str, Any]:
         with self._pool.connection() as conn:
@@ -247,6 +276,7 @@ class NoteStore:
         """Insert a note. With `supersedes`, that active note becomes superseded."""
         [embedding] = self._embedder.embed([_embedding_text(title, body)], "document")
         with self._pool.connection() as conn, conn.transaction():
+            self._ensure_current(conn)
             if supersedes is not None:
                 replaced = conn.execute(
                     "UPDATE notes SET status = 'superseded'"
@@ -291,6 +321,7 @@ class NoteStore:
         [embedding] = self._embedder.embed([query], "query")
         candidates = max(limit * 5, 40)
         with self._pool.connection() as conn, conn.transaction():
+            self._ensure_current(conn)
             # The HNSW index otherwise stops after ef_search (default 40) rows,
             # *then* applies the status/tag filters, silently dropping matches.
             # Iterative scans keep walking the graph until enough rows pass.

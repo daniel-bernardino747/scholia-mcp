@@ -1,6 +1,7 @@
 import pytest
 from conftest import FakeEmbedder
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from scholia_mcp.server import create_server
 from scholia_mcp.store import open_store, reindex
@@ -66,3 +67,27 @@ async def test_failed_reindex_leaves_the_database_as_it_was(database_url, embedd
     with open_store(database_url, embedder, "english") as store:
         async with Client(create_server(store)) as client:
             assert (await search(client, "automobile"))[0]["id"] == saved["car"]["id"]
+
+
+class FakeEmbedderV2(FakeEmbedder):
+    """Another model with the same dimension: the case a dim check can't catch."""
+
+    model = "concepts-v2"
+
+
+async def test_a_server_left_running_through_a_reindex_refuses_to_save_or_search(
+    database_url, embedder, saved
+):
+    with open_store(database_url, embedder, "english") as stale_store:
+        async with Client(create_server(stale_store)) as stale:
+            reindex(database_url, FakeEmbedderV2(), "english")
+
+            with pytest.raises(ToolError, match="reindexed"):
+                await save(stale, title="Late note", body="Written with the old model.")
+            with pytest.raises(ToolError, match="reindexed"):
+                await search(stale, "automobile")
+
+    with open_store(database_url, FakeEmbedderV2(), "english") as store:
+        async with Client(create_server(store)) as client:
+            titles = [r["title"] for r in await search(client, "note", limit=50)]
+    assert "Late note" not in titles

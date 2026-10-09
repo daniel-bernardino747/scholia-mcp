@@ -3,11 +3,13 @@
 import argparse
 import sys
 
+import httpx
+import psycopg
 from pydantic import ValidationError
 
 from scholia_mcp.auth import build_auth
 from scholia_mcp.config import Settings
-from scholia_mcp.embeddings import build_embedder
+from scholia_mcp.embeddings import Embedder, build_embedder
 from scholia_mcp.server import create_server
 from scholia_mcp.store import SchemaMismatch, open_store, reindex
 
@@ -28,27 +30,35 @@ def main(argv: list[str] | None = None) -> None:
     except ValidationError as error:
         sys.exit(f"Invalid configuration, refusing to start:\n{error}")
 
+    try:
+        embedder = build_embedder(settings)
+    except ValueError as error:  # e.g. an unknown EMBEDDING_MODEL
+        sys.exit(f"Invalid configuration, refusing to start:\n{error}")
+
     match args.command:
         case "serve":
-            serve(settings)
+            serve(settings, embedder)
         case "reindex":
-            embedder = build_embedder(settings)
-            count = reindex(settings.database_url, embedder, settings.fts_language)
-            print(
-                f"Reindexed {count} notes with {embedder.provider}/{embedder.model}"
-                f" ({embedder.dim} dims), FTS language {settings.fts_language}."
-            )
+            run_reindex(settings, embedder)
 
 
-def serve(settings: Settings) -> None:
+def run_reindex(settings: Settings, embedder: Embedder) -> None:
+    try:
+        count = reindex(settings.database_url, embedder, settings.fts_language)
+    except (httpx.HTTPError, psycopg.Error, ValueError) as error:
+        sys.exit(f"Reindex failed; the database was left unchanged.\n{error}")
+    print(
+        f"Reindexed {count} notes with {embedder.provider}/{embedder.model}"
+        f" ({embedder.dim} dims), FTS language {settings.fts_language}."
+    )
+
+
+def serve(settings: Settings, embedder: Embedder) -> None:
     try:
         store = open_store(
-            settings.database_url,
-            build_embedder(settings),
-            settings.fts_language,
-            settings.min_similarity,
+            settings.database_url, embedder, settings.fts_language, settings.min_similarity
         )
-    except SchemaMismatch as error:
+    except (SchemaMismatch, ValueError) as error:
         sys.exit(str(error))
     with store:
         server = create_server(store, auth=build_auth(settings))
