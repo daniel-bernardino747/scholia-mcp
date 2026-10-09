@@ -220,3 +220,31 @@ async def test_list_tags_counts_active_notes_most_used_first(client):
     tags = (await call(client, "list_tags"))["tags"]
 
     assert tags == [{"tag": "cafe", "count": 2}, {"tag": "focus", "count": 2}]
+
+
+async def test_archiving_the_current_version_makes_the_previous_one_current_again(client):
+    v1 = await save(client, title="Coffee v1", body="Espresso helps.")
+    v2 = await save(client, title="Coffee v2", body="Espresso hurts.", supersedes=v1["id"])
+
+    await call(client, "archive_note", id=v2["id"], reason="Wrong conclusion")
+
+    assert [(r["title"], r["status"]) for r in await search(client, "espresso")] == [
+        ("Coffee v1", "active")
+    ]
+    revised = await save(client, title="Coffee v3", body="Espresso is fine.", supersedes=v1["id"])
+    assert revised["supersedes"] == v1["id"]
+
+
+async def test_archiving_a_middle_version_leaves_the_current_one_alone(client):
+    v1 = await save(client, title="Coffee v1", body="Espresso helps.")
+    v2 = await save(client, title="Coffee v2", body="Espresso hurts.", supersedes=v1["id"])
+    v3 = await save(client, title="Coffee v3", body="Espresso is fine.", supersedes=v2["id"])
+
+    await call(client, "archive_note", id=v2["id"])
+
+    assert [r["id"] for r in await search(client, "espresso")] == [v3["id"]]
+    oldest = await call(client, "get_note", id=v1["id"])
+    assert [(v["title"], v["status"]) for v in oldest["newer_versions"]] == [
+        ("Coffee v2", "archived"),
+        ("Coffee v3", "active"),
+    ]

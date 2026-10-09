@@ -7,6 +7,7 @@ when to call a tool and what to pass; they are written for it.
 from typing import Annotated
 from uuid import UUID
 
+import anyio
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 from pydantic import BaseModel, Field
@@ -123,8 +124,8 @@ def create_server(store: NoteStore, auth: AuthProvider | None = None) -> FastMCP
         """Read a note in full, with its sources and version history.
 
         `previous_versions` are the notes it replaced and `newer_versions` the
-        ones that replaced it, oldest first. If `newer_versions` is not empty,
-        the last one is the current view: prefer it when answering.
+        ones that replaced it, oldest first. The current view is the one with
+        status 'active' (archived versions were withdrawn): prefer it when answering.
         """
         return store.get(id)
 
@@ -153,8 +154,9 @@ def create_server(store: NoteStore, auth: AuthProvider | None = None) -> FastMCP
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> JSONResponse:
-        # Public (outside /mcp auth) and says nothing beyond up/down.
-        if store.is_healthy():
+        # Public (outside /mcp auth) and says nothing beyond up/down. The check
+        # blocks on the database, so it runs in a worker thread, not the event loop.
+        if await anyio.to_thread.run_sync(store.is_healthy):
             return JSONResponse({"status": "ok"})
         return JSONResponse({"status": "unavailable"}, status_code=503)
 

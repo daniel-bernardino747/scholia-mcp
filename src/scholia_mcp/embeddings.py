@@ -94,9 +94,17 @@ class OllamaEmbedder:
         client: httpx.Client | None = None,
     ):
         self.model = model
-        # Local models can be slow to load on first use.
-        self._client = client or httpx.Client(base_url=base_url, timeout=120)
-        [probe] = self.embed(["dimension probe"], "query")
+        # Local models can be slow to load on first use; a missing server is not.
+        self._client = client or httpx.Client(
+            base_url=base_url, timeout=httpx.Timeout(120, connect=5)
+        )
+        try:
+            [probe] = self.embed(["dimension probe"], "query")
+        except httpx.HTTPError as error:
+            raise ValueError(
+                f"Could not embed with Ollama model {model!r} at {base_url}: {error}."
+                f" Is Ollama running, and was the model pulled (`ollama pull {model}`)?"
+            ) from error
         self.dim = len(probe)
 
     def embed(self, texts: list[str], input_type: InputType) -> list[list[float]]:

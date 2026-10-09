@@ -145,19 +145,55 @@ def reindex(database_url: str, embedder: Embedder, fts_language: str, batch_size
 
 
 def unarchive(database_url: str, note_id: UUID) -> Note:
-    """Undo archive_note: back to superseded if a newer version exists, else active."""
-    with psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn:
+    """Undo archive_note.
+
+    The note is superseded if a newer, non-archived version exists. Otherwise it
+    becomes current again, and the version that stood in for it is superseded.
+    """
+    with (
+        psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn,
+        conn.transaction(),
+    ):
         row = conn.execute(
             "UPDATE notes n SET archived_at = NULL, archived_reason = NULL, status ="
-            " CASE WHEN EXISTS (SELECT 1 FROM notes s WHERE s.supersedes = n.id)"
-            " THEN 'superseded' ELSE 'active' END"
-            " WHERE id = %s AND status = 'archived'"
+            f" CASE WHEN EXISTS ({_UNARCHIVED_AFTER}) THEN 'superseded' ELSE 'active' END"
+            " WHERE id = %(note)s AND status = 'archived'"
             f" RETURNING {_NOTE_COLUMNS}",
-            (note_id,),
+            {"note": note_id},
         ).fetchone()
-    if row is None:
-        raise NoteNotFound(f"No archived note with id {note_id}")
+        if row is None:
+            raise NoteNotFound(f"No archived note with id {note_id}")
+        if row["status"] == "active" and row["supersedes"] is not None:
+            conn.execute(
+                "UPDATE notes SET status = 'superseded'"
+                f" WHERE id = ({_LATEST_UNARCHIVED_BEFORE}) AND status = 'active'",
+                {"note": row["supersedes"]},
+            )
     return Note.model_validate(row)
+
+
+# Going back along `supersedes` from %(note)s (inclusive), the first note that
+# isn't archived: the version that is current when everything after it is.
+_LATEST_UNARCHIVED_BEFORE = """
+WITH RECURSIVE back AS (
+    SELECT id, status, supersedes, 0 AS depth FROM notes WHERE id = %(note)s
+    UNION ALL
+    SELECT n.id, n.status, n.supersedes, back.depth + 1
+    FROM notes n JOIN back ON n.id = back.supersedes
+    WHERE back.status = 'archived'
+)
+SELECT id FROM back WHERE status <> 'archived' ORDER BY depth LIMIT 1
+"""
+
+# Any newer, non-archived version of %(note)s along the chain.
+_UNARCHIVED_AFTER = """
+WITH RECURSIVE forward AS (
+    SELECT id, status FROM notes WHERE supersedes = %(note)s
+    UNION ALL
+    SELECT n.id, n.status FROM notes n JOIN forward ON n.supersedes = forward.id
+)
+SELECT 1 FROM forward WHERE status <> 'archived'
+"""
 
 
 def _check_dimension(embedder: Embedder) -> None:
@@ -296,7 +332,7 @@ class NoteStore:
     def is_healthy(self) -> bool:
         """Whether the database answers; for load balancer health checks."""
         try:
-            with self._pool.connection(timeout=5) as conn:
+            with self._pool.connection(timeout=2) as conn:
                 conn.execute("SELECT 1")
         except Exception:
             return False
@@ -374,16 +410,28 @@ class NoteStore:
         return [TagCount.model_validate(row) for row in rows]
 
     def archive(self, note_id: UUID, reason: str | None = None) -> Note:
-        """Take a note out of every search; `scholia-mcp unarchive` reverses it."""
-        with self._pool.connection() as conn:
+        """Take a note out of every search; `scholia-mcp unarchive` reverses it.
+
+        Archiving the current version of a chain makes the latest earlier,
+        non-archived version current again, so the topic stays findable.
+        """
+        with self._pool.connection() as conn, conn.transaction():
+            before = conn.execute(
+                "SELECT status FROM notes WHERE id = %s FOR UPDATE", (note_id,)
+            ).fetchone()
             row = conn.execute(
                 "UPDATE notes SET status = 'archived', archived_at = now(),"
                 " archived_reason = %s WHERE id = %s AND status <> 'archived'"
                 f" RETURNING {_NOTE_COLUMNS}",
                 (reason, note_id),
             ).fetchone()
-        if row is None:
-            raise NoteNotFound(f"No note with id {note_id} that isn't already archived")
+            if row is None:
+                raise NoteNotFound(f"No note with id {note_id} that isn't already archived")
+            if before and before["status"] == "active" and row["supersedes"] is not None:
+                conn.execute(
+                    f"UPDATE notes SET status = 'active' WHERE id = ({_LATEST_UNARCHIVED_BEFORE})",
+                    {"note": row["supersedes"]},
+                )
         return Note.model_validate(row)
 
     def search(

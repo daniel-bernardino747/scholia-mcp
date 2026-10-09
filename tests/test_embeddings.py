@@ -151,3 +151,15 @@ async def test_switching_from_voyage_to_openai_with_reindex_keeps_search_working
 def test_unknown_models_are_rejected_before_any_request():
     with pytest.raises(ValueError, match="Unknown OpenAI model"):
         OpenAIEmbedder("sk", "text-embedding-ada-002", client=openai_api([]))
+
+
+def test_ollama_without_the_model_fails_with_a_configuration_error():
+    missing = httpx.Client(
+        base_url="https://api.test",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(404, json={"error": "model 'bge-m3' not found"})
+        ),
+    )
+
+    with pytest.raises(ValueError, match="ollama pull bge-m3"):
+        OllamaEmbedder("bge-m3", client=missing)
