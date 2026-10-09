@@ -44,9 +44,9 @@ Cada etapa termina com um critério "pronto quando" verificável.
 - [ ] Ativar backups nativos do Postgres no Railway
 - [x] claude.ai → Settings → Connectors → adicionar custom connector com a URL `/mcp`; fazer login
 - [ ] Conferir que aparece no Claude Code como `claude_ai_*`
-- [x] Rascunho das instruções pt-BR (`instructions/pt-BR.md`; falta testar se o Claude passa a buscar no scholia em vez da memória nativa) nas preferências pessoais do claude.ai (sugerir salvar, busca proativa, citar nota, reaproveitar tags, divisão com memória nativa)
+- [x] Rascunho das instruções pt-BR (`instructions/pt-BR.md`; testado: com as instruções, o Claude busca no scholia e cita a nota) nas preferências pessoais do claude.ai (sugerir salvar, busca proativa, citar nota, reaproveitar tags, divisão com memória nativa)
 
-*Deploy em 2026-10-09: https://scholia-production.up.railway.app (template pgvector `3jJFCA`). Login OAuth + `save_note` pelo claude.ai funcionando; na primeira busca o Claude usou a memória nativa em vez do scholia, sem instruções nas preferências.*
+*Deploy em 2026-10-09: https://scholia-production.up.railway.app (template pgvector `3jJFCA`). Login OAuth + `save_note` pelo claude.ai funcionando; na primeira busca o Claude usou a memória nativa em vez do scholia, sem instruções nas preferências. Com `instructions/pt-BR.md` nas preferências, numa conversa nova na web, ele buscou sozinho e citou a nota. Falta conferir no celular.*
 
 **Pronto quando:** numa conversa nova no claude.ai (web e celular), o Claude busca sozinho num assunto já salvo e cita a nota.
 
