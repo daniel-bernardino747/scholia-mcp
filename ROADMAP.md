@@ -81,12 +81,12 @@ Cada etapa termina com um critério "pronto quando" verificável.
 
 ## Etapa 5 — Open source
 
-- [ ] `instructions/en.md` e `instructions/pt-BR.md` (versão final, testada na etapa 2)
-- [ ] README em inglês: o que é, por que, setup (GitHub OAuth App passo a passo, Railway, docker-compose, Claude Code, bearer), env vars, reindex, export/import, segurança (fail-closed, sem delete via MCP)
+- [x] `instructions/en.md` e `instructions/pt-BR.md` (versão final, testada na etapa 2)
+- [x] README em inglês: o que é, por que, setup (GitHub OAuth App passo a passo, Railway, docker-compose, Claude Code, bearer), env vars, reindex, export/import, segurança (fail-closed, sem delete via MCP)
 - [ ] Template 1-clique do Railway (Postgres+pgvector + servidor + cron opcional)
-- [ ] CI (GitHub Actions): lint + testes com Postgres em service container
-- [ ] `CONTRIBUTING.md` curto
-- [ ] Criar repo público `daniel-bernardino747/scholia-mcp` e push
+- [x] CI (GitHub Actions): lint + testes com Postgres em service container
+- [x] `CONTRIBUTING.md` curto
+- [x] Criar repo público `daniel-bernardino747/scholia-mcp` e push
 - [ ] Publicar `scholia-mcp` no PyPI (opcional)
 
 **Pronto quando:** alguém sem contexto sobe a própria instância só seguindo o README.
