@@ -54,13 +54,15 @@ Cada etapa termina com um critério "pronto quando" verificável.
 
 ## Etapa 3 — Ferramentas restantes + embeddings plugáveis
 
-- [ ] `get_note(id)` — nota completa, incluindo cadeia de `supersedes` (anteriores e sucessora)
-- [ ] `list_tags()` — tags com contagem, normalizadas (minúsculas, sem acento)
-- [ ] `archive_note(id, reason?)` — status `archived`, some das buscas; reversível via banco/CLI
-- [ ] Descrições das ferramentas em inglês, escritas para o modelo (quando chamar, o que passar)
-- [~] Adaptadores `openai` (feito: `text-embedding-3-small`/`-large`, o large encurtado para 1536 dims por causa do limite de 2000 do HNSW) e `ollama` (falta); `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL`
+- [x] `get_note(id)` — nota completa, incluindo cadeia de `supersedes` (anteriores e sucessora)
+- [x] `list_tags()` — tags com contagem, normalizadas (minúsculas, sem acento)
+- [x] `archive_note(id, reason?)` — status `archived`, some das buscas; reversível via banco/CLI (`scholia-mcp unarchive <id>` volta para `superseded` ou `active`)
+- [x] Descrições das ferramentas em inglês, escritas para o modelo (quando chamar, o que passar)
+- [x] Adaptadores `openai` (`text-embedding-3-small`/`-large`, o large encurtado para 1536 dims por causa do limite de 2000 do HNSW) e `ollama` (qualquer modelo; dimensão descoberta numa chamada inicial; padrão `bge-m3`, multilíngue); `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL`
 - [x] CLI `scholia-mcp reindex` (embeddings calculados antes; troca numa transação só, então falha da API não altera o banco) — recalcula embeddings e `tsv`, recria coluna/índice com a nova dimensão, atualiza `meta`
-- [ ] Testes por adaptador (com fake para CI)
+- [x] Testes por adaptador (com fake para CI)
+
+*Coberto por teste com as duas APIs simuladas (`test_switching_from_voyage_to_openai_with_reindex_keeps_search_working`); não validado com chaves reais da OpenAI.*
 
 **Pronto quando:** trocar Voyage → OpenAI, rodar `reindex`, e a busca continuar funcionando.
 

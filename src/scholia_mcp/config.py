@@ -9,7 +9,11 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_MODELS = {"voyage": "voyage-3.5-lite", "openai": "text-embedding-3-small"}
+DEFAULT_MODELS = {
+    "voyage": "voyage-3.5-lite",
+    "openai": "text-embedding-3-small",
+    "ollama": "bge-m3",  # multilingual
+}
 
 
 class Settings(BaseSettings):
@@ -27,11 +31,12 @@ class Settings(BaseSettings):
     # Public URL of this server, used for OAuth callbacks (e.g. https://x.up.railway.app).
     base_url: str | None = None
 
-    embedding_provider: Literal["voyage", "openai"] = "voyage"
+    embedding_provider: Literal["voyage", "openai", "ollama"] = "voyage"
     # Empty means the provider's default (see DEFAULT_MODELS).
     embedding_model: str = ""
     voyage_api_key: str | None = None
     openai_api_key: str | None = None
+    ollama_url: str = "http://localhost:11434"
 
     fts_language: str = "english"
 

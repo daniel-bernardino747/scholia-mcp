@@ -12,7 +12,7 @@ A self-hosted second brain for AI agents. Every conversation with Claude starts 
 
 Works with claude.ai (web and mobile, as a custom connector), Claude Code, and any MCP client.
 
-> Status: in daily use by its author. Next up: `get_note`, `list_tags`, `archive_note`, an Ollama adapter, and Markdown export/import. See [ROADMAP.md](ROADMAP.md) (in Portuguese).
+> Status: in daily use by its author. Next up: Markdown export/import and an optional Git backup. See [ROADMAP.md](ROADMAP.md) (in Portuguese).
 
 ## How it works
 
@@ -20,6 +20,9 @@ Works with claude.ai (web and mobile, as a custom connector), Claude Code, and a
 |---|---|
 | `save_note(title, body, tags, sources, origin_agent, supersedes?)` | Saves a note. With `supersedes`, the referenced note becomes `superseded` in the same transaction. Tags are normalized (lowercase, no accents). |
 | `search_notes(query, tags?, include_superseded=false, limit=8)` | Hybrid search. Returns id, title, excerpt, tags, date and status. |
+| `get_note(id)` | The full note, with the versions it replaced and the ones that replaced it. |
+| `list_tags()` | Tags of current notes with counts, so agents reuse them. |
+| `archive_note(id, reason?)` | Removes a note from every search; it stays readable. Undo with `scholia-mcp unarchive <id>`. |
 
 Notes live in one Postgres table with an HNSW vector index and a GIN full-text index. The embedding model, its dimension and the full-text language are recorded in the database; the server refuses to start if your configuration no longer matches them (see [Changing the embedding model or language](#changing-the-embedding-model-or-language)).
 
@@ -37,6 +40,7 @@ Pick one:
 
 - **Voyage AI** (default, good multilingual quality): create a key at [dashboard.voyageai.com](https://dashboard.voyageai.com) → *API Keys*. It starts with `pa-`. Keys created through MongoDB Atlas only work against a different endpoint and are not supported yet. Without a payment method on file, Voyage limits you to about 3 requests per minute, which you'll hit; adding one keeps the free tokens.
 - **OpenAI**: create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+- **Ollama** (fully local, no key): for self-hosting next to an Ollama server rather than on Railway. Any embedding model works; the default `bge-m3` is multilingual.
 
 ### 2. Create the Railway project
 
@@ -109,9 +113,10 @@ All configuration is through environment variables; see [`.env.example`](.env.ex
 | `BEARER_TOKEN` | — | Required in `bearer` mode. |
 | `ALLOWED_GITHUB_USERS` | — | Required in `github` mode. Numeric IDs (recommended: a login can be renamed and re-registered by someone else) or logins, comma-separated. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BASE_URL` | — | Required in `github` mode. |
-| `EMBEDDING_PROVIDER` | `voyage` | `voyage` or `openai`. |
-| `EMBEDDING_MODEL` | per provider | `voyage-3.5-lite` / `text-embedding-3-small`. Also: `voyage-3.5`, `voyage-3-large`, `voyage-multilingual-2`, `text-embedding-3-large` (shortened to 1536 dims). |
+| `EMBEDDING_PROVIDER` | `voyage` | `voyage`, `openai` or `ollama`. |
+| `EMBEDDING_MODEL` | per provider | `voyage-3.5-lite` / `text-embedding-3-small` / `bge-m3`. Ollama accepts any embedding model up to 2000 dimensions. Also: `voyage-3.5`, `voyage-3-large`, `voyage-multilingual-2`, `text-embedding-3-large` (shortened to 1536 dims). |
 | `VOYAGE_API_KEY` / `OPENAI_API_KEY` | — | For the chosen provider. |
+| `OLLAMA_URL` | `http://localhost:11434` | For `ollama`. |
 | `FTS_LANGUAGE` | `english` | Any Postgres text search configuration. |
 | `MIN_SIMILARITY` | `0` | Cosine similarity a note needs to be returned without a keyword match. `0` disables it; in tests with `voyage-3.5-lite`, related and unrelated notes overlapped between 0.34 and 0.52, so calibrate on your own notes before raising it. |
 | `HOST`, `PORT` | `0.0.0.0`, `8000` | |

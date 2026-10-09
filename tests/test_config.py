@@ -100,3 +100,12 @@ def test_embedding_model_defaults_per_provider(monkeypatch):
 
     assert voyage.embedding_model == "voyage-3.5-lite"
     assert openai.embedding_model == "text-embedding-3-small"
+
+
+def test_ollama_provider_needs_no_key_and_defaults_to_a_multilingual_model(monkeypatch):
+    settings = make(
+        monkeypatch, BEARER_TOKEN="s3cret", EMBEDDING_PROVIDER="ollama", VOYAGE_API_KEY=""
+    )
+
+    assert settings.embedding_model == "bge-m3"
+    assert settings.ollama_url == "http://localhost:11434"
