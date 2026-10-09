@@ -59,12 +59,7 @@ def open_store(
     On an empty database the configured embedder and FTS language are recorded
     in `meta`. On later boots they must match, or SchemaMismatch is raised.
     """
-    expected = {
-        "embedding_provider": embedder.provider,
-        "embedding_model": embedder.model,
-        "embedding_dim": embedder.dim,
-        "fts_language": fts_language,
-    }
+    expected = _index_settings(embedder, fts_language)
     with psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn:
         conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK,))
         try:
@@ -73,6 +68,95 @@ def open_store(
         finally:
             conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK,))
     return NoteStore(database_url, embedder, fts_language, min_similarity)
+
+
+def reindex(database_url: str, embedder: Embedder, fts_language: str, batch_size: int = 64) -> int:
+    """Rebuild every note's embedding and full-text vector with new settings.
+
+    All embeddings are computed before the database is touched, then swapped in
+    a single transaction: if the embedding API fails, nothing changes. Run it
+    with the server stopped, since a running server still embeds with the old
+    settings. Returns the number of notes reindexed.
+    """
+    expected = _index_settings(embedder, fts_language)
+    with psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn:
+        conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK,))
+        try:
+            _migrate(conn)
+            conn.execute("SELECT %s::regconfig", (fts_language,))
+            notes = conn.execute("SELECT id, title, body FROM notes ORDER BY created_at").fetchall()
+            conn.commit()  # don't hold a transaction open across slow API calls
+            texts = [_embedding_text(note["title"], note["body"]) for note in notes]
+            vectors = [
+                vector
+                for start in range(0, len(texts), batch_size)
+                for vector in embedder.embed(texts[start : start + batch_size], "document")
+            ]
+            with conn.transaction():
+                conn.execute("DROP INDEX IF EXISTS notes_embedding_idx")
+                conn.execute("ALTER TABLE notes DROP COLUMN IF EXISTS embedding")
+                _add_embedding_column(conn, embedder.dim, nullable=True)
+                with conn.cursor() as cursor:
+                    cursor.executemany(
+                        "UPDATE notes SET embedding = %s::vector WHERE id = %s",
+                        [
+                            (_vector_literal(v), note["id"])
+                            for note, v in zip(notes, vectors, strict=True)
+                        ],
+                    )
+                # Fails (and rolls everything back) if a note arrived meanwhile.
+                conn.execute("ALTER TABLE notes ALTER COLUMN embedding SET NOT NULL")
+                _create_embedding_index(conn)
+                conn.execute(
+                    "UPDATE notes SET tsv ="
+                    " to_tsvector(%s::regconfig, unaccent(title || ' ' || body))",
+                    (fts_language,),
+                )
+                conn.execute("DELETE FROM meta")
+                _insert_meta(conn, expected)
+        finally:
+            conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK,))
+    return len(notes)
+
+
+def _embedding_text(title: str, body: str) -> str:
+    """What gets embedded for a note; save and reindex must agree on it."""
+    return f"{title}\n\n{body}"
+
+
+def _index_settings(embedder: Embedder, fts_language: str) -> dict[str, Any]:
+    """What `meta` records about how `embedding` and `tsv` were computed."""
+    return {
+        "embedding_provider": embedder.provider,
+        "embedding_model": embedder.model,
+        "embedding_dim": embedder.dim,
+        "fts_language": fts_language,
+    }
+
+
+def _add_embedding_column(
+    conn: psycopg.Connection[DictRow], dim: int, nullable: bool = False
+) -> None:
+    conn.execute(
+        sql.SQL("ALTER TABLE notes ADD COLUMN embedding vector({}) {}").format(
+            sql.Literal(int(dim)), sql.SQL("" if nullable else "NOT NULL")
+        )
+    )
+
+
+def _create_embedding_index(conn: psycopg.Connection[DictRow]) -> None:
+    conn.execute(
+        "CREATE INDEX notes_embedding_idx ON notes USING hnsw (embedding vector_cosine_ops)"
+    )
+
+
+def _insert_meta(conn: psycopg.Connection[DictRow], settings: dict[str, Any]) -> None:
+    conn.execute(
+        "INSERT INTO meta (embedding_provider, embedding_model, embedding_dim,"
+        " fts_language) VALUES (%(embedding_provider)s, %(embedding_model)s,"
+        " %(embedding_dim)s, %(fts_language)s)",
+        settings,
+    )
 
 
 def _migrate(conn: psycopg.Connection[DictRow]) -> None:
@@ -100,21 +184,9 @@ def _check_or_init_meta(conn: psycopg.Connection[DictRow], expected: dict[str, A
             "SELECT embedding_provider, embedding_model, embedding_dim, fts_language FROM meta"
         ).fetchone()
         if current is None:
-            dim = int(expected["embedding_dim"])
-            conn.execute(
-                sql.SQL("ALTER TABLE notes ADD COLUMN embedding vector({}) NOT NULL").format(
-                    sql.Literal(dim)
-                )
-            )
-            conn.execute(
-                "CREATE INDEX notes_embedding_idx ON notes USING hnsw (embedding vector_cosine_ops)"
-            )
-            conn.execute(
-                "INSERT INTO meta (embedding_provider, embedding_model, embedding_dim,"
-                " fts_language) VALUES (%(embedding_provider)s, %(embedding_model)s,"
-                " %(embedding_dim)s, %(fts_language)s)",
-                expected,
-            )
+            _add_embedding_column(conn, expected["embedding_dim"])
+            _create_embedding_index(conn)
+            _insert_meta(conn, expected)
             return
     diffs = [
         f"{key}: database={current[key]!r}, configured={expected[key]!r}"
@@ -125,8 +197,8 @@ def _check_or_init_meta(conn: psycopg.Connection[DictRow], expected: dict[str, A
         raise SchemaMismatch(
             "Database was indexed with different settings ("
             + "; ".join(diffs)
-            + "). Restore the previous settings, or rebuild the index with"
-            " `scholia-mcp reindex` (not available yet in this version)."
+            + "). Restore the previous settings, or stop the server and run"
+            " `scholia-mcp reindex` to rebuild the index with the configured ones."
         )
 
 
@@ -173,7 +245,7 @@ class NoteStore:
         supersedes: UUID | None = None,
     ) -> Note:
         """Insert a note. With `supersedes`, that active note becomes superseded."""
-        [embedding] = self._embedder.embed([f"{title}\n\n{body}"], "document")
+        [embedding] = self._embedder.embed([_embedding_text(title, body)], "document")
         with self._pool.connection() as conn, conn.transaction():
             if supersedes is not None:
                 replaced = conn.execute(
