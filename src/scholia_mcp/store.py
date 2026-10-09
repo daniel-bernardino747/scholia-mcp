@@ -34,6 +34,27 @@ class Note(BaseModel):
     created_at: datetime
     supersedes: UUID | None
     status: Status
+    archived_at: datetime | None = None
+    archived_reason: str | None = None
+
+
+class NoteVersion(BaseModel):
+    id: UUID
+    title: str
+    created_at: datetime
+    status: Status
+
+
+class NoteDetail(Note):
+    """A note plus the notes it replaced and the ones that replaced it, oldest first."""
+
+    previous_versions: list[NoteVersion]
+    newer_versions: list[NoteVersion]
+
+
+class TagCount(BaseModel):
+    tag: str
+    count: int
 
 
 class SearchHit(BaseModel):
@@ -121,6 +142,22 @@ def reindex(database_url: str, embedder: Embedder, fts_language: str, batch_size
         finally:
             conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK,))
     return len(notes)
+
+
+def unarchive(database_url: str, note_id: UUID) -> Note:
+    """Undo archive_note: back to superseded if a newer version exists, else active."""
+    with psycopg.Connection[DictRow].connect(database_url, row_factory=dict_row) as conn:
+        row = conn.execute(
+            "UPDATE notes n SET archived_at = NULL, archived_reason = NULL, status ="
+            " CASE WHEN EXISTS (SELECT 1 FROM notes s WHERE s.supersedes = n.id)"
+            " THEN 'superseded' ELSE 'active' END"
+            " WHERE id = %s AND status = 'archived'"
+            f" RETURNING {_NOTE_COLUMNS}",
+            (note_id,),
+        ).fetchone()
+    if row is None:
+        raise NoteNotFound(f"No archived note with id {note_id}")
+    return Note.model_validate(row)
 
 
 def _check_dimension(embedder: Embedder) -> None:
@@ -314,6 +351,41 @@ class NoteStore:
             ).fetchone()
         return Note.model_validate(row)
 
+    def get(self, note_id: UUID) -> NoteDetail:
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                f"SELECT {_NOTE_COLUMNS} FROM notes WHERE id = %s", (note_id,)
+            ).fetchone()
+            if row is None:
+                raise NoteNotFound(f"No note with id {note_id}")
+            previous = conn.execute(_PREVIOUS_VERSIONS_SQL, (note_id,)).fetchall()
+            newer = conn.execute(_NEWER_VERSIONS_SQL, (note_id,)).fetchall()
+        return NoteDetail.model_validate(
+            {**row, "previous_versions": previous, "newer_versions": newer}
+        )
+
+    def list_tags(self) -> list[TagCount]:
+        """Tags of active notes with how many use each, most used first."""
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT tag, count(*) AS count FROM notes, unnest(tags) AS tag"
+                " WHERE status = 'active' GROUP BY tag ORDER BY count DESC, tag"
+            ).fetchall()
+        return [TagCount.model_validate(row) for row in rows]
+
+    def archive(self, note_id: UUID, reason: str | None = None) -> Note:
+        """Take a note out of every search; `scholia-mcp unarchive` reverses it."""
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                "UPDATE notes SET status = 'archived', archived_at = now(),"
+                " archived_reason = %s WHERE id = %s AND status <> 'archived'"
+                f" RETURNING {_NOTE_COLUMNS}",
+                (reason, note_id),
+            ).fetchone()
+        if row is None:
+            raise NoteNotFound(f"No note with id {note_id} that isn't already archived")
+        return Note.model_validate(row)
+
     def search(
         self,
         query: str,
@@ -357,10 +429,40 @@ class NoteStore:
         return [SearchHit.model_validate(row) for row in rows]
 
 
-_NOTE_COLUMNS = "id, title, body, tags, sources, origin_agent, created_at, supersedes, status"
+_NOTE_COLUMNS = (
+    "id, title, body, tags, sources, origin_agent, created_at, supersedes, status,"
+    " archived_at, archived_reason"
+)
 _EXCERPT_CHARS = 280
 # Standard reciprocal rank fusion constant: score = sum(1 / (k + rank)).
 _RRF_K = 60
+
+# Walk `supersedes` back from a note (to what it replaced) and forward (to what
+# replaced it). Each note can only supersede an older one, so there are no cycles.
+_PREVIOUS_VERSIONS_SQL = """
+WITH RECURSIVE chain AS (
+    SELECT supersedes AS id, 1 AS depth FROM notes WHERE id = %s AND supersedes IS NOT NULL
+    UNION ALL
+    SELECT n.supersedes, chain.depth + 1
+    FROM notes n JOIN chain ON n.id = chain.id
+    WHERE n.supersedes IS NOT NULL
+)
+SELECT n.id, n.title, n.created_at, n.status
+FROM chain JOIN notes n USING (id)
+ORDER BY chain.depth DESC
+"""
+
+_NEWER_VERSIONS_SQL = """
+WITH RECURSIVE chain AS (
+    SELECT id, 1 AS depth FROM notes WHERE supersedes = %s
+    UNION ALL
+    SELECT n.id, chain.depth + 1
+    FROM notes n JOIN chain ON n.supersedes = chain.id
+)
+SELECT n.id, n.title, n.created_at, n.status
+FROM chain JOIN notes n USING (id)
+ORDER BY chain.depth
+"""
 
 _SEARCH_SQL = """
 WITH vector_ranked AS (
