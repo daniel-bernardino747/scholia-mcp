@@ -36,15 +36,17 @@ Cada etapa termina com um critério "pronto quando" verificável.
 
 ## Etapa 2 — GitHub OAuth + deploy no Railway (uso real começa aqui)
 
-- [ ] `AUTH_MODE=github` com o provider GitHub do FastMCP; checa login contra `ALLOWED_GITHUB_USERS`; fail-closed se lista vazia
-- [ ] `BASE_URL` para callbacks OAuth
-- [ ] `Dockerfile` enxuto (sem modelos locais)
-- [ ] Criar OAuth App no GitHub (callback = `BASE_URL` + rota do FastMCP)
-- [ ] Railway: projeto com Postgres (com pgvector) + serviço do servidor; env com `FTS_LANGUAGE=portuguese`
+- [x] `AUTH_MODE=github` com o provider GitHub do FastMCP; checa login contra `ALLOWED_GITHUB_USERS`; fail-closed se lista vazia. Aceita também IDs numéricos (mais seguro: login pode ser renomeado e registrado por outra pessoa); escopo `read:user`; estado OAuth criptografado no Postgres (`oauth_state`) para sobreviver a redeploys
+- [x] `BASE_URL` para callbacks OAuth
+- [x] `Dockerfile` enxuto (sem modelos locais)
+- [x] Criar OAuth App no GitHub (callback = `BASE_URL` + rota do FastMCP)
+- [x] Railway: projeto com Postgres (com pgvector) + serviço do servidor; env com `FTS_LANGUAGE=portuguese`
 - [ ] Ativar backups nativos do Postgres no Railway
-- [ ] claude.ai → Settings → Connectors → adicionar custom connector com a URL `/mcp`; fazer login
+- [x] claude.ai → Settings → Connectors → adicionar custom connector com a URL `/mcp`; fazer login
 - [ ] Conferir que aparece no Claude Code como `claude_ai_*`
-- [ ] Rascunho das instruções pt-BR nas preferências pessoais do claude.ai (sugerir salvar, busca proativa, citar nota, reaproveitar tags, divisão com memória nativa)
+- [x] Rascunho das instruções pt-BR (`instructions/pt-BR.md`; falta testar se o Claude passa a buscar no scholia em vez da memória nativa) nas preferências pessoais do claude.ai (sugerir salvar, busca proativa, citar nota, reaproveitar tags, divisão com memória nativa)
+
+*Deploy em 2026-10-09: https://scholia-production.up.railway.app (template pgvector `3jJFCA`). Login OAuth + `save_note` pelo claude.ai funcionando; na primeira busca o Claude usou a memória nativa em vez do scholia, sem instruções nas preferências.*
 
 **Pronto quando:** numa conversa nova no claude.ai (web e celular), o Claude busca sozinho num assunto já salvo e cita a nota.
 
