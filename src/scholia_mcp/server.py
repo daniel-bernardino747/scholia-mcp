@@ -6,6 +6,8 @@ from uuid import UUID
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 from pydantic import BaseModel, Field
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from scholia_mcp.store import Note, NoteStore, SearchHit
 
@@ -52,5 +54,12 @@ def create_server(store: NoteStore, auth: AuthProvider | None = None) -> FastMCP
     ) -> SearchResults:
         """Search the user's knowledge base."""
         return SearchResults(results=store.search(query, tags, include_superseded, limit))
+
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health(request: Request) -> JSONResponse:
+        # Public (outside /mcp auth) and says nothing beyond up/down.
+        if store.is_healthy():
+            return JSONResponse({"status": "ok"})
+        return JSONResponse({"status": "unavailable"}, status_code=503)
 
     return mcp

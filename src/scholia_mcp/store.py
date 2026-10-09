@@ -256,6 +256,15 @@ class NoteStore:
                 " started. Restart it with the settings it was reindexed with."
             )
 
+    def is_healthy(self) -> bool:
+        """Whether the database answers; for load balancer health checks."""
+        try:
+            with self._pool.connection(timeout=5) as conn:
+                conn.execute("SELECT 1")
+        except Exception:
+            return False
+        return True
+
     def meta(self) -> dict[str, Any]:
         with self._pool.connection() as conn:
             row = conn.execute(
