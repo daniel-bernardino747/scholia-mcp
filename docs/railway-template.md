@@ -1,6 +1,6 @@
 # Railway template
 
-Maintainer notes for the one-click template (draft code `YCIHYg`). The draft was
+Maintainer notes for the one-click template (published as `scholia-template`). The draft was
 generated from a clean project (`railway templates create`), which keeps
 reference values but drops literal ones, so the defaults below must be set in
 the template editor before publishing.
@@ -59,10 +59,10 @@ then set the real values and redeploy. The overview below says so.
 ## Publishing
 
 ```sh
-railway templates publish YCIHYg --category AI/ML \
+railway templates publish scholia-template --category AI/ML \
   --description "Self-hosted second brain for Claude and other AI agents, over MCP" \
   --readme-file docs/railway-template-overview.md
 ```
 
 Then add the deploy button to the README:
-`[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/YCIHYg)`
+`[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/scholia-template)`

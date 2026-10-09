@@ -25,6 +25,10 @@ Notes live in one Postgres table with an HNSW vector index and a GIN full-text i
 
 ## Deploy on Railway
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/scholia-template)
+
+The button sets up Postgres with pgvector and the server; you still need the embedding key (step 1), the GitHub OAuth App (step 3) and the variables marked as required. Prefer doing it by hand? Follow all the steps below.
+
 You need accounts on [Railway](https://railway.com), GitHub, and one embedding provider. It takes about 15 minutes.
 
 ### 1. Get an embedding API key
