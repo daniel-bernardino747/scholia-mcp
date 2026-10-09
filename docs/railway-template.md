@@ -29,6 +29,25 @@ the template editor before publishing.
 Mark `VOYAGE_API_KEY` as optional, since OpenAI users won't have one.
 
 4. Check the public domain targets port **8000** and the pgvector volume is kept.
+5. **Icons** (each service → Settings → Icon):
+   - server: `https://cdn.jsdelivr.net/gh/daniel-bernardino747/scholia-mcp@main/docs/icon.svg`
+   - pgvector: `https://devicons.railway.com/i/postgresql.svg`
+6. **Healthcheck** (server → Settings → Deploy → Healthcheck Path): `/health`.
+   It answers 200 only when the database responds. The repo's `railway.json`
+   sets the same path for deploys from the repo. Databases don't get one.
+7. pgvector variables (descriptions only; keep the values):
+
+| Variable | Description |
+|---|---|
+| `POSTGRES_USER` | Database superuser name. Default `postgres`. |
+| `POSTGRES_PASSWORD` | Generated per deploy. Don't change. |
+| `POSTGRES_DB` | Database name. Default `railway`. |
+| `PGDATA` | Data directory inside the volume. Don't change. |
+| `PGUSER`, `PGPASSWORD`, `PGDATABASE` | Mirrors of the `POSTGRES_*` values, for clients. |
+| `PGHOST`, `PGPORT` | Public TCP proxy host and port, for connecting from outside Railway. |
+| `PGHOST_PRIVATE`, `PGPORT_PRIVATE` | Private network host and port, used by the server. |
+| `DATABASE_URL` | Public connection URL (e.g. for running `reindex` from your machine). |
+| `DATABASE_URL_PRIVATE` | Private connection URL, used by the server. |
 
 ## Chicken-and-egg on first deploy
 
