@@ -51,7 +51,9 @@ class SchemaMismatch(RuntimeError):
     """The database was built with different embedding/FTS settings than configured."""
 
 
-def open_store(database_url: str, embedder: Embedder, fts_language: str) -> "NoteStore":
+def open_store(
+    database_url: str, embedder: Embedder, fts_language: str, min_similarity: float = 0.0
+) -> "NoteStore":
     """Migrate the schema, check it matches the configuration, and open a store.
 
     On an empty database the configured embedder and FTS language are recorded
@@ -70,7 +72,7 @@ def open_store(database_url: str, embedder: Embedder, fts_language: str) -> "Not
             _check_or_init_meta(conn, expected)
         finally:
             conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK,))
-    return NoteStore(database_url, embedder, fts_language)
+    return NoteStore(database_url, embedder, fts_language, min_similarity)
 
 
 def _migrate(conn: psycopg.Connection[DictRow]) -> None:
@@ -129,9 +131,17 @@ def _check_or_init_meta(conn: psycopg.Connection[DictRow], expected: dict[str, A
 
 
 class NoteStore:
-    def __init__(self, database_url: str, embedder: Embedder, fts_language: str):
+    def __init__(
+        self,
+        database_url: str,
+        embedder: Embedder,
+        fts_language: str,
+        min_similarity: float = 0.0,
+    ):
         self._embedder = embedder
         self._fts_language = fts_language
+        # Notes less similar than this to the query only appear on a term match.
+        self._min_similarity = min_similarity
         self._pool = ConnectionPool(
             database_url, kwargs={"row_factory": dict_row}, min_size=1, max_size=5, open=True
         )
@@ -226,6 +236,7 @@ class NoteStore:
                     "embedding": _vector_literal(embedding),
                     "lang": self._fts_language,
                     "candidates": candidates,
+                    "min_similarity": self._min_similarity,
                     "rrf_k": _RRF_K,
                     "limit": limit,
                     "excerpt": _EXCERPT_CHARS,
@@ -245,6 +256,7 @@ WITH vector_ranked AS (
     FROM notes
     WHERE status = ANY(%(statuses)s)
       AND (cardinality(%(tags)s::text[]) = 0 OR tags && %(tags)s::text[])
+      AND 1 - (embedding <=> %(embedding)s::vector) >= %(min_similarity)s
     ORDER BY embedding <=> %(embedding)s::vector
     LIMIT %(candidates)s
 ),

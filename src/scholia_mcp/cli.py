@@ -28,7 +28,12 @@ def main(argv: list[str] | None = None) -> None:
 
 def serve(settings: Settings) -> None:
     try:
-        store = open_store(settings.database_url, build_embedder(settings), settings.fts_language)
+        store = open_store(
+            settings.database_url,
+            build_embedder(settings),
+            settings.fts_language,
+            settings.min_similarity,
+        )
     except SchemaMismatch as error:
         sys.exit(str(error))
     with store:

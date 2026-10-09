@@ -25,6 +25,9 @@ Cada etapa termina com um critério "pronto quando" verificável.
 - [x] Auth `bearer`
 - [x] Testes de integração contra Postgres real (docker): salvar, buscar por sentido, buscar por termo exato, supersede
 
+- [x] `MIN_SIMILARITY`: piso de similaridade cosseno para a parte vetorial da busca (termo exato sempre passa). Padrão 0 = desligado
+- [ ] Calibrar `MIN_SIMILARITY` com scores reais do Voyage (notas relacionadas vs. não relacionadas) e definir o padrão
+
 *Falta validar com uma chave Voyage real (testes usam embedder falso; boot, auth e listagem de ferramentas já verificados via HTTP no docker compose).*
 
 **Pronto quando:** `docker compose up`, conectar o Claude Code via `claude mcp add --transport http ... --header "Authorization: Bearer ..."`, salvar uma nota e achá-la por sinônimo e por sigla.

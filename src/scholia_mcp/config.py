@@ -6,7 +6,7 @@ embed) is rejected at load time, so the server never starts with it.
 
 from typing import Literal, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     voyage_api_key: str | None = None
 
     fts_language: str = "english"
+
+    # Cosine similarity a note needs to be returned without a term match.
+    # 0 disables the floor; calibrate against real scores before raising it.
+    min_similarity: float = Field(default=0.0, ge=0.0, le=1.0)
 
     host: str = "0.0.0.0"
     port: int = 8000

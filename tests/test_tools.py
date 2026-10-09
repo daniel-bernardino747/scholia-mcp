@@ -131,3 +131,24 @@ async def test_tag_filter_finds_matches_beyond_the_nearest_neighbours(client):
     results = await search(client, "car", tags=["health"], limit=5)
 
     assert [r["title"].split()[0] for r in results] == ["Night"] * 5
+
+
+@pytest.fixture
+async def strict_client(database_url, embedder):
+    with open_store(database_url, embedder, "english", min_similarity=0.5) as store:
+        async with Client(create_server(store)) as client:
+            yield client
+
+
+async def test_with_a_similarity_floor_an_unrelated_query_finds_nothing(strict_client):
+    await save(strict_client, title="Buying a car", body="Electric cars cost less to run.")
+
+    assert await search(strict_client, "insomnia") == []
+
+
+async def test_with_a_similarity_floor_a_term_match_is_still_found(strict_client):
+    saved = await save(strict_client, title="Gödel", body="Cars, automobiles, vehicles.")
+
+    results = await search(strict_client, "godel")
+
+    assert [r["id"] for r in results] == [saved["id"]]
