@@ -26,9 +26,9 @@ Cada etapa termina com um critério "pronto quando" verificável.
 - [x] Testes de integração contra Postgres real (docker): salvar, buscar por sentido, buscar por termo exato, supersede
 
 - [x] `MIN_SIMILARITY`: piso de similaridade cosseno para a parte vetorial da busca (termo exato sempre passa). Padrão 0 = desligado
-- [ ] Calibrar `MIN_SIMILARITY` com scores reais do Voyage (notas relacionadas vs. não relacionadas) e definir o padrão
+- [x] Calibrar `MIN_SIMILARITY` com scores reais do Voyage (2026-10-09, `voyage-3.5-lite`, 5 notas pt-BR): nota certa 0,44–0,63; melhor nota sem relação 0,34–0,52 — as faixas se sobrepõem, então o padrão fica **0** (desligado). Reavaliar com mais notas ou com um corte relativo ao melhor score
 
-*Falta validar com uma chave Voyage real (testes usam embedder falso; boot, auth e listagem de ferramentas já verificados via HTTP no docker compose).*
+*Validado em 2026-10-09 no docker compose com Voyage real: 3/3 buscas por sinônimo e 3/3 por sigla com a nota certa em 1º; Claude Code conectado via `claude mcp add`.*
 
 **Pronto quando:** `docker compose up`, conectar o Claude Code via `claude mcp add --transport http ... --header "Authorization: Bearer ..."`, salvar uma nota e achá-la por sinônimo e por sigla.
 
