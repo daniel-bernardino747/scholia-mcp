@@ -13,6 +13,10 @@ from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 from scholia_mcp.config import Settings
 
+# FastMCP's salt for deriving the OAuth storage key. Changing it makes every
+# stored registration and token unreadable (all clients must log in again).
+_STORAGE_KEY_SALT = "fastmcp-storage-encryption-key"
+
 
 class StaticBearerVerifier(TokenVerifier):
     """Accepts exactly one shared token, compared in constant time."""
@@ -28,21 +32,25 @@ class StaticBearerVerifier(TokenVerifier):
 
 
 class AllowlistGitHubVerifier(GitHubTokenVerifier):
-    """A GitHub token verifier that only lets in the given logins.
+    """A GitHub token verifier that only lets in the given accounts.
 
-    Runs on every request, so removing a login revokes access immediately.
+    Entries are logins (case-insensitive) or numeric account IDs. IDs are
+    safer: a login can be renamed and then registered by someone else.
+    Runs on every request, so removing an entry revokes access immediately.
     """
 
     def __init__(self, allowed: set[str], http_client: httpx2.AsyncClient | None = None):
-        super().__init__(required_scopes=["user"], http_client=http_client)
-        self._allowed = {login.lower() for login in allowed}
+        # read:user is enough to identify the user; "user" would also grant writes.
+        super().__init__(required_scopes=["read:user"], http_client=http_client)
+        self._allowed = {entry.lower() for entry in allowed}
 
     async def verify_token(self, token: str) -> AccessToken | None:
         verified = await super().verify_token(token)
         if verified is None:
             return None
-        login = str(verified.claims.get("login") or "")
-        return verified if login.lower() in self._allowed else None
+        login = str(verified.claims.get("login") or "").lower()
+        account_id = str(verified.claims.get("sub") or "")
+        return verified if {login, account_id} & self._allowed else None
 
 
 def build_auth(settings: Settings) -> AuthProvider:
@@ -62,7 +70,7 @@ def _github_auth(settings: Settings) -> AuthProvider:
     # as FastMCP does for its default file store.
     storage_key = derive_jwt_key(
         high_entropy_material=settings.github_client_secret,
-        salt="fastmcp-storage-encryption-key",
+        salt=_STORAGE_KEY_SALT,
     )
     storage = FernetEncryptionWrapper(
         key_value=PostgreSQLStore(url=settings.database_url, table_name="oauth_state"),
