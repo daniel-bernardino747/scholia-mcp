@@ -58,7 +58,7 @@ Cada etapa termina com um critério "pronto quando" verificável.
 - [ ] `list_tags()` — tags com contagem, normalizadas (minúsculas, sem acento)
 - [ ] `archive_note(id, reason?)` — status `archived`, some das buscas; reversível via banco/CLI
 - [ ] Descrições das ferramentas em inglês, escritas para o modelo (quando chamar, o que passar)
-- [ ] Adaptadores `openai` e `ollama`; `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL`
+- [~] Adaptadores `openai` (feito: `text-embedding-3-small`/`-large`, o large encurtado para 1536 dims por causa do limite de 2000 do HNSW) e `ollama` (falta); `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL`
 - [x] CLI `scholia-mcp reindex` (embeddings calculados antes; troca numa transação só, então falha da API não altera o banco) — recalcula embeddings e `tsv`, recria coluna/índice com a nova dimensão, atualiza `meta`
 - [ ] Testes por adaptador (com fake para CI)
 

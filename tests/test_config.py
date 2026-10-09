@@ -15,6 +15,8 @@ def make(monkeypatch, **env):
         "BEARER_TOKEN",
         "EMBEDDING_PROVIDER",
         "VOYAGE_API_KEY",
+        "OPENAI_API_KEY",
+        "EMBEDDING_MODEL",
         "ALLOWED_GITHUB_USERS",
         "GITHUB_CLIENT_ID",
         "GITHUB_CLIENT_SECRET",
@@ -83,3 +85,18 @@ def test_github_mode_without_a_required_setting_refuses_to_load(monkeypatch, mis
 def test_github_mode_with_an_allowlist_of_only_separators_refuses_to_load(monkeypatch):
     with pytest.raises(ValidationError, match="ALLOWED_GITHUB_USERS"):
         make(monkeypatch, **{**GITHUB, "ALLOWED_GITHUB_USERS": " , ,"})
+
+
+def test_openai_provider_without_api_key_refuses_to_load(monkeypatch):
+    with pytest.raises(ValidationError, match="OPENAI_API_KEY"):
+        make(monkeypatch, BEARER_TOKEN="s3cret", EMBEDDING_PROVIDER="openai")
+
+
+def test_embedding_model_defaults_per_provider(monkeypatch):
+    voyage = make(monkeypatch, BEARER_TOKEN="s3cret")
+    openai = make(
+        monkeypatch, BEARER_TOKEN="s3cret", EMBEDDING_PROVIDER="openai", OPENAI_API_KEY="sk"
+    )
+
+    assert voyage.embedding_model == "voyage-3.5-lite"
+    assert openai.embedding_model == "text-embedding-3-small"

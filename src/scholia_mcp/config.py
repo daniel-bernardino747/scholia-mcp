@@ -9,6 +9,8 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_MODELS = {"voyage": "voyage-3.5-lite", "openai": "text-embedding-3-small"}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -25,9 +27,11 @@ class Settings(BaseSettings):
     # Public URL of this server, used for OAuth callbacks (e.g. https://x.up.railway.app).
     base_url: str | None = None
 
-    embedding_provider: Literal["voyage"] = "voyage"
-    embedding_model: str = "voyage-3.5-lite"
+    embedding_provider: Literal["voyage", "openai"] = "voyage"
+    # Empty means the provider's default (see DEFAULT_MODELS).
+    embedding_model: str = ""
     voyage_api_key: str | None = None
+    openai_api_key: str | None = None
 
     fts_language: str = "english"
 
@@ -54,6 +58,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"AUTH_MODE=github requires {', '.join(missing)}")
         if self.embedding_provider == "voyage" and not self.voyage_api_key:
             raise ValueError("EMBEDDING_PROVIDER=voyage requires VOYAGE_API_KEY")
+        if self.embedding_provider == "openai" and not self.openai_api_key:
+            raise ValueError("EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY")
+        if not self.embedding_model:
+            self.embedding_model = DEFAULT_MODELS[self.embedding_provider]
         return self
 
     @property
